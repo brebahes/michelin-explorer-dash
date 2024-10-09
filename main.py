@@ -23,7 +23,9 @@ app = Dash(external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP])
 text_input = dbc.InputGroup(
     [
         dbc.Input(placeholder="Search for a location...", type="text", id='location-search'),
+        dbc.Button('L', id='geolocation-button', n_clicks=0,color='primary'),
         dbc.Button('Search', id='location-button', n_clicks=0, color="secondary"),
+        dcc.Geolocation(id="geolocation"),
     ]
 )
 
@@ -258,7 +260,8 @@ app.layout = dbc.Container(
     Input('checklist-euro', 'value'),
     Input('checklist-michelin', 'value'),
     Input('checklist-cuisine', 'value'),
-    Input('checklist-services', 'value')
+    Input('checklist-services', 'value'),
+    prevent_initial_call=True
 )
 def filter_df(price, stars, cuisine, services):
     dff = hl.apply_filters(df, price, stars, cuisine, services)
@@ -268,7 +271,8 @@ def filter_df(price, stars, cuisine, services):
 # Callback to update the insights left-plot
 @callback(
     Output('insights-fig-left', 'figure'),
-    Input('filtered-df', 'data')
+    Input('filtered-df', 'data'),
+    prevent_initial_call=True
 )
 def update_insights_figures(data):
     dff = pd.DataFrame(data)
@@ -282,13 +286,13 @@ def update_insights_figures(data):
     Output('graph-content', 'figure'),
     Input('filtered-df', 'data'),
     Input('map-style', 'value'),
-    Input('location-button', 'n_clicks'),
-    State('location-search', 'value'),
-    State('graph-content', 'figure')
+    Input('location-search', 'value'),
+    State('graph-content', 'figure'),
+    prevent_initial_call=True
 )
-def update_graph(data, mapstyle, nclicks, location_search, fig):
+def update_graph(data, mapstyle, location_search, fig):
     # Detect what triggered the graph update
-    if 'location-button'== ctx.triggered_id: # If it was triggered by the search button
+    if 'location-search'== ctx.triggered_id: # If it was triggered by the search button
         zoom = hl.zoom_from_location(location_search) * 0.85
         location = geolocator.geocode(location_search)
         fig['layout']['map']['center'] = {"lat": location.latitude, "lon": location.longitude}
@@ -306,16 +310,26 @@ def update_graph(data, mapstyle, nclicks, location_search, fig):
         fig = pl.map(dff, zoom, center, mapstyle)
         return fig
 
+@callback(Output("geolocation", "update_now"), Input("geolocation-button", "n_clicks"),
+    prevent_initial_call=True)
+def update_now(click):
+    return True if click and click > 0 else False
+
 # Callback to update the location search value
 @callback(
     Output('location-search', 'value'),
     Input('location-button', 'n_clicks'),
+    Input("geolocation", "position"),
     State('location-search', 'value'),
     prevent_initial_call=True
 )
-def update_location(nclicks, location_search):
-    location = geolocator.geocode(location_search)
-    return location.address
+def update_location(nclicks1, pos, location_search):
+    if 'location-button' == ctx.triggered_id:
+        location = geolocator.geocode(location_search)
+        return location.address
+    else:
+        location = geolocator.reverse(f'{pos["lat"]}, {pos["lon"]}')
+        return location.address
 
 # TODO: Add the webpage of the restaurant and some more details (street, country, etc...)
 # Callback to show a modal with the details of the restaurant upon clicking on the map
